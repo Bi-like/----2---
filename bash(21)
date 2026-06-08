@@ -1,0 +1,145 @@
+#!/bin/bash
+
+show_help() {
+    echo "Использование: $0 [ОПЦИИ] <директория> <длина> [символ]"
+    echo ""
+    echo "Назначение: Удлинение имен файлов до указанной длины заданным знаком"
+    echo ""
+    echo "Параметры:"
+    echo "  -h, --help    показать эту справку"
+    echo "  -d, --dry-run показать, что будет сделано, но не выполнять"
+    echo "  <директория>  путь к папке с файлами"
+    echo "  <длина>       целевая длина имени (целое число > 0)"
+    echo "  [символ]      символ для заполнения (по умолчанию '_')"
+    echo ""
+    echo "Пример:"
+    echo "  $0 /path/to/folder 10 _"
+    echo "  $0 --dry-run ./test 8 -"
+}
+
+DRY_RUN=0
+TARGET_DIR=""
+TARGET_LEN=""
+FILL_CHAR="_"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -d|--dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        *)
+            if [[ -z "$TARGET_DIR" ]]; then
+                TARGET_DIR="$1"
+            elif [[ -z "$TARGET_LEN" ]]; then
+                TARGET_LEN="$1"
+            elif [[ -z "$FILL_CHAR" ]]; then
+                FILL_CHAR="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$TARGET_DIR" || -z "$TARGET_LEN" ]]; then
+    echo "Ошибка: необходимо указать директорию и целевую длину"
+    echo "Для справки: $0 --help"
+    exit 1
+fi
+
+if [[ ! -d "$TARGET_DIR" ]]; then
+    echo "Ошибка: директория '$TARGET_DIR' не существует!"
+    exit 1
+fi
+
+if [[ ! "$TARGET_LEN" =~ ^[0-9]+$ ]] || [[ "$TARGET_LEN" -eq 0 ]]; then
+    echo "Ошибка: длина должна быть положительным целым числом"
+    exit 1
+fi
+
+if [[ ${#FILL_CHAR} -ne 1 ]]; then
+    echo "Ошибка: символ заполнения должен быть ровно один символ"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$TARGET_DIR" = /* ]]; then
+    ABS_TARGET_DIR="$TARGET_DIR"
+else
+    ABS_TARGET_DIR="$SCRIPT_DIR/$TARGET_DIR"
+fi
+
+echo "============================================"
+echo "Удлинение имен файлов"
+echo "============================================"
+echo "Директория: $ABS_TARGET_DIR"
+echo "Целевая длина имени: $TARGET_LEN"
+echo "Символ заполнения: '$FILL_CHAR'"
+echo "Режим: $([ $DRY_RUN -eq 1 ] && echo 'ПРОСМОТР (без изменений)' || echo 'ВЫПОЛНЕНИЕ')"
+echo "============================================"
+
+COUNT=0
+SKIPPED=0
+
+for file in "$ABS_TARGET_DIR"/*; do
+    
+    if [[ ! -f "$file" ]]; then
+        continue
+    fi
+    
+    filename=$(basename "$file")
+    
+    base="${filename%.*}"
+    ext=""
+    if [[ "$filename" == *.* ]]; then
+        ext=".${filename##*.}"
+    fi
+    
+    if [[ -z "$base" ]]; then
+        base="$filename"
+        ext=""
+    fi
+    
+    current_len=${#base}
+    
+    if [[ $current_len -ge $TARGET_LEN ]]; then
+        echo "[ПРОПУСК] $filename : имя '$base' уже имеет длину $current_len (>= $TARGET_LEN)"
+        ((SKIPPED++))
+        continue
+    fi
+    
+    need=$((TARGET_LEN - current_len))
+    
+    padding=""
+    for ((i=0; i<need; i++)); do
+        padding="${padding}${FILL_CHAR}"
+    done
+    
+    new_base="${base}${padding}"
+    new_filename="${new_base}${ext}"
+    new_path="$ABS_TARGET_DIR/$new_filename"
+    
+    if [[ -e "$new_path" ]]; then
+        echo "[ОШИБКА] $filename -> $new_filename : файл с таким именем уже существует"
+        ((SKIPPED++))
+        continue
+    fi
+    
+    echo "$filename -> $new_filename (добавлено $need симв.)"
+    
+    if [[ $DRY_RUN -eq 0 ]]; then
+        mv "$file" "$new_path"
+    fi
+    
+    ((COUNT++))
+done
+
+echo "============================================"
+echo "Готово!"
+echo "Обработано файлов: $COUNT"
+echo "Пропущено файлов: $SKIPPED"
+echo "============================================"
