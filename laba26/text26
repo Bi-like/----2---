@@ -1,0 +1,5 @@
+lab26/
+├── Makefile
+├── merge.h
+├── merge.c
+└── main.c
